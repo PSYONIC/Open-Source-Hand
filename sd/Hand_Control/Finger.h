@@ -5,9 +5,6 @@
 #include "CLASS_CONFIG.h"
 #include "Config.h"
 
-#include <Wire.h>
-#include <Adafruit_PWMServoDriver.h>
-
 typedef enum {FORWARD, BACKWARD} direction;
 
 class Finger {
@@ -19,12 +16,12 @@ public:
     void setTarget(long val);
     void setTarget(long val, float velocity);
     long getPos();
+    classes getCurrentGrasp();
     void reset();
     void close();
     void stop();
     void setup(int fingerNum);
     void setupMotorPins();
-    void setPwmDriver(Adafruit_PWMServoDriver& driver);
     
     volatile long position;
     
@@ -36,13 +33,11 @@ public:
     bool shouldLimit;
 
 private:
-    Adafruit_PWMServoDriver pwmDriver;
-
     void setDutyCycle(int pin, int duty);
 
     long getEncoderValue();
 
-    void move(int v);
+    void move(int& v);
     int calcSpeed();
 
     float pcVelocity;

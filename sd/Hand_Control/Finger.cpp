@@ -62,8 +62,8 @@ void Finger::setup(int fingerNum) {
 
 /* Force a finger to close for zeroing out the encoder position */
 void Finger::close() {
-  setDutyCycle(motorDir1Pin, DEFAULT_SPEED);
-  setDutyCycle(motorDir2Pin, 0);
+  setDutyCycle(motorDir1Pin, 0);
+  setDutyCycle(motorDir2Pin, DEFAULT_SPEED);
 }
 
 /* Force stop a finger */
@@ -97,7 +97,18 @@ void Finger::reset() {
 
 /* Called once every event iteration, updates controller */
 int Finger::update() {
-    velocity = calcSpeed();
+
+//    Serial.printf("%d, ", position);
+//
+//    if (fingerNum_internal == NUM_FINGERS - 1) {
+//      Serial.println();
+//    }
+
+    int theSpeed = calcSpeed();
+
+//    Serial.print(theSpeed);
+    
+    velocity = (int)constrain(calcSpeed() * pcVelocity, MIN_SPEED, MAX_SPEED);
 
     move(velocity);
 
@@ -135,28 +146,28 @@ void Finger::setTarget(long val, float inVelocity) {
 }
 
 /* Move a finger forward or backwards based on sign of velocity */
-void Finger::move(int v) {
+void Finger::move(int& v) {
+//    v = constrain(v, MIN_SPEED, MAX_SPEED);
 
     int speed = abs(v);
 
     if (speed < MOVEMENT_THRESHOLD) {
-        setDutyCycle(motorDir1Pin, 0);
+      setDutyCycle(motorDir1Pin, 0);
         setDutyCycle(motorDir2Pin, 0);
         return;
     }
 
     int fingerSpeed = DEFAULT_SPEED;
-//    int fingerSpeed = speed;
 
     if (shouldLimit) {
-      fingerSpeed = (int)DEFAULT_SPEED / 3.0f;
+      fingerSpeed = (int)(DEFAULT_SPEED / CONTACT_SPEED[fingerNum_internal]);
     }
     
     switch(dir) {
       case FORWARD:
         if (v > 0) {
-          setDutyCycle(motorDir2Pin, fingerSpeed);
-          setDutyCycle(motorDir1Pin, 0);
+          setDutyCycle(motorDir2Pin, 0);
+          setDutyCycle(motorDir1Pin, fingerSpeed);
         } else {
           setDutyCycle(motorDir1Pin, 0);
           setDutyCycle(motorDir2Pin, 0);
@@ -165,8 +176,8 @@ void Finger::move(int v) {
 
       case BACKWARD:
         if (v < 0) {
-          setDutyCycle(motorDir1Pin, fingerSpeed);
-          setDutyCycle(motorDir2Pin, 0);
+          setDutyCycle(motorDir1Pin, 0);
+          setDutyCycle(motorDir2Pin, fingerSpeed);
         } else {
           setDutyCycle(motorDir1Pin, 0);
           setDutyCycle(motorDir2Pin, 0);
@@ -177,7 +188,10 @@ void Finger::move(int v) {
 
 /* Calculate the speed a finger should move at */
 int Finger::calcSpeed() {
-    float error = constrain(10*((float)target - position), -MAX_SPEED, MAX_SPEED);
+    float error = 2.1*((float)target - position);
+
+//    Serial.printf("%d ",target);
+//    Serial.printf("%d ",position);
 
     return error;
 }
@@ -189,10 +203,12 @@ long Finger::getPos() {
 
 /* Set the pwm duty cycle on the i2c pwm driver */
 void Finger::setDutyCycle(int pin, int duty) {
-  pwmDriver.setPWM(pin, 0, duty % 4096);
+  // pwmDriver.setPWM(pin, 0, duty % 4096);
+  analogWrite(pin,duty);
 }
 
 /* Set the pwmDriver object used by this finger */
-void Finger::setPwmDriver(Adafruit_PWMServoDriver& driver) {
-  pwmDriver = driver;
+
+classes Finger::getCurrentGrasp() {
+  return current_grasp;
 }

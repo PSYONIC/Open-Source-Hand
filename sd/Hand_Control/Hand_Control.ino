@@ -17,10 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <SPI.h>
-#include <Servo.h>
-#include <Wire.h>
-#include <Adafruit_PWMServoDriver.h>
+#include <i2c_t3.h>
  
 #include "Config.h"
 #include "Finger.h"
@@ -35,47 +32,68 @@ int targets[NUM_FINGERS] = {};
 int serialTarget = 0;
 classes prevClass = NIL;
 
+elapsedMicros deltaT;
+
+int errorCount = 0;
+
+bool socketDisconnect = false;
+
 /* Initate everything */
 void setup() {
+//    Wire.setDefaultTimeout(10000);
+//    Wire.begin();
+    Wire.begin(I2C_MASTER, 0x00, I2C_PINS_18_19, I2C_PULLUP_EXT, I2C_RATE_400);
+    analogWriteResolution(10);
+    
     Serial.begin(9600);
     delay(1000);
 
-    pinMode(13, OUTPUT);
-    digitalWrite(13, HIGH);
-
+    pinMode(12, OUTPUT);
+    pinMode(28, OUTPUT);
+    pinMode(27, OUTPUT);
+    
+    digitalWrite(12, HIGH);
+    deltaT = 0;
     hand.setupMotorPins();
 
-//    pressureSensors.setup();
-//    pressureSensors.calculateAverages();
+    pressureSensors.setup();
+    pressureSensors.calculateAverages();
     
     delay(2000);
     Serial.println("reset start");
+//    hand.reset();
+
+    
 
     for (int i = 0; i < NUM_FINGERS; i++) {
       pinMode(encoderAPins[i], INPUT);
       pinMode(encoderBPins[i], INPUT);
     }
-
+//= {13, 2, 7, 31, 24, 17};
+//{11, 14, 8, 26, 33, 16}
     //For some reason the pins had to be set explicitly instead of from the encoder pin array directly
-    attachInterrupt(digitalPinToInterrupt(10), Hand::Encoder0, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(8), Hand::Encoder1, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(7), Hand::Encoder2, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(0), Hand::Encoder3, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(2), Hand::Encoder4, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(4), Hand::Encoder5, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(13), Hand::Encoder0, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(14), Hand::Encoder1, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(8), Hand::Encoder2, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(26), Hand::Encoder3, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(33), Hand::Encoder4, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(16), Hand::Encoder5, CHANGE);
 
-    hand.reset();
+    Serial.println("Encoder interrupts attached");
+
+        hand.close();
+//Serial.println("Encoder positions calibrated.");
 }
 
 /* Event loop */
 void loop() {
-//  pressureSensors.sample();
+  pressureSensors.sample();
   
   if (Serial.available() > 0) {
       handleSerial();
   }
 
-//  handlePressure();
+  handlePressure();
 
   updateSocketStatus();
 
@@ -85,10 +103,12 @@ void loop() {
   switch (serialTarget) {
     case 1:
       hand.setTarget(targets);
+      Serial.print("Set Target");
       break;
       
     case 2:
       hand.setGrasp((classes)targets[0]);
+      Serial.print("Set Grasp");
       break;
       
     case 3:
@@ -97,9 +117,6 @@ void loop() {
   }
   serialTarget = 0;
 
-  if (Serial.available() > 0) {
-      handleSerial();
-  }
 }
 
 /* Get pressure readings and decide if contact reflexes needed  */
@@ -121,18 +138,21 @@ void handlePressure() {
 
   hand.limitSpeed(cond);
 
-  Wire.beginTransmission(STIM_ADDR);
-  Wire.write(cond);
-  Wire.endTransmission();
+  if (socketDisconnect) {
+    cond = 0;
+  }
+//  Wire.beginTransmission(STIM_ADDR);
+//  Wire.write(cond);
+//  Wire.endTransmission(I2C_STOP, 50000);
 }
 
 /* Reads a register from the socket */
 char readFromRegister(char readRegister) {
   Wire.beginTransmission(SOCKET_ADDR);
   Wire.write(readRegister);
-  Wire.endTransmission();
+  Wire.endTransmission(I2C_STOP, 50000);
 
-  Wire.requestFrom(SOCKET_ADDR, 1);
+  Wire.requestFrom(SOCKET_ADDR, 1, I2C_STOP, 50000);
 
   return Wire.read(); 
 }
@@ -149,18 +169,39 @@ void train() {
 void updateSocketStatus() {
   operationState_t state = (operationState_t)readFromRegister(CONTROL);
   classes handGrasp = (classes)readFromRegister(CLASS);
-  float velocity = (float)(readFromRegister(VELOCITY)/255);
+  int timeE = deltaT;
+  Serial.println(timeE);
+  deltaT = 0;
+//  float velocity = (float)(readFromRegister(VELOCITY)/255);
+socketDisconnect = false;
 
-  switch(state) {
-    case TRAINING:
-      hand.setGrasp(handGrasp);
-    break;
+if (getI2CStatus() == -1) {
+  socketDisconnect = true;
+  digitalWrite(28, HIGH);
 
-    case RUNNING:
-      hand.setGrasp(handGrasp);
-    break;
+  Wire.beginTransmission(STIM_ADDR);
+  Wire.write(0);
+  Wire.endTransmission(I2C_STOP, 50000);
 
-    default: break;
+  while(true);
+
+} else {
+//  errorCount = 0;
+  digitalWrite(28, LOW);
+  
+    switch(state) {
+      case TRAINING:
+        if (prevClass != handGrasp) { //check if we have switched classes
+          hand.setGrasp((handGrasp));
+        }
+      break;
+  
+      case RUNNING:
+        hand.setGrasp(handGrasp);
+      break;
+  
+      default: break;
+    }
   }
 }
 
@@ -217,10 +258,30 @@ void handleSerial() {
             serialTarget = 3;
             break; 
         case 'r': //reset
-            hand.reset();
+            hand.close();
+//            hand.reset();
             break; 
+        case 'p':
+            hand.printPos();
+            break;
             
         } // end switch temp
         
     } // end if Serial.available
 } // end handleSerial
+
+int getI2CStatus() {
+  int status = 0;
+  switch (Wire.status()) {
+    case I2C_ADDR_NAK:
+    case I2C_DATA_NAK:
+    case I2C_ARB_LOST:
+    case I2C_TIMEOUT:
+    case I2C_BUF_OVF:
+      status = -1;
+      break;
+    }
+
+  return status;
+}
+

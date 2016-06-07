@@ -34,9 +34,11 @@ Hand::Hand() {
         finger[i].setup(i);
     }
 
-    pwmDriver = Adafruit_PWMServoDriver(0x5F);
-    pwmDriver.begin();
-    pwmDriver.setPWMFreq(24);
+    // pwmDriver = Adafruit_PWMServoDriver(0x5F);
+    // pwmDriver.begin();
+    // pwmDriver.setPWMFreq(24);
+
+    inFinalPosition = false;
 }
 
 /* Initiate motor pins for all fingers and setup fingers */
@@ -47,18 +49,25 @@ void Hand::setupMotorPins(){
     
   for (int i = 0; i < NUM_FINGERS; ++i) {
     finger[i].setupMotorPins();
-    finger[i].setPwmDriver(pwmDriver);
+    // finger[i].setPwmDriver(pwmDriver);
   }
 
 }
 
 /* Set the grasp for the hand */
 void Hand::setGrasp(classes grasp) {
+  
   for (int i = 0; i < NUM_FINGERS; i++) {
     int cond1 = (finger[i].current_grasp > OPEN && grasp == OPEN);
     int cond2 = (finger[i].current_grasp == OPEN && grasp > OPEN);
-
-    if (((finger[i].current_grasp > OPEN && grasp == OPEN) || (finger[i].current_grasp <= OPEN && grasp >= OPEN)) && ((int)grasp < NUM_CLASSES)) {
+//if (i == 0) {
+//      Serial.printf("Outside: %d %d\n", grasp, finger[0].current_grasp);
+//      }
+    if ((((finger[i].current_grasp > OPEN && grasp == OPEN) || (finger[i].current_grasp <= OPEN && grasp > OPEN)) && ((int)grasp < NUM_CLASSES)) && (grasp != finger[i].current_grasp)) {
+//      if (i == 0) {
+//      Serial.printf("%d %d\n", grasp, finger[0].current_grasp);
+//      }
+      
       finger[i].last_grasp = finger[i].current_grasp;
 
       finger[i].current_grasp = grasp;
@@ -89,7 +98,6 @@ void Hand::setGrasp(classes grasp, float velocity) {
 void Hand::setTarget(int * targets) {
     for (int i = 0; i < NUM_FINGERS; ++i) {
         finger[i].setTarget(targets[i]); 
-//        finger[i].current_grasp = NIL;
         finger[i].last_grasp = NIL;
     }
 } 
@@ -103,30 +111,14 @@ void Hand::limitSpeed(bool shouldLimit) {
 
 /* Force the hand to close for calibrations */
 void Hand::close() {
-
-}
-
-void Hand::printPos() {
-  for (int i = 0; i < NUM_FINGERS; ++i) {
-    Serial.printf("%d, ", finger[i].getPos());
-  }
-  Serial.println();
-}
-
-/* Update the control loop for each finger */
-void Hand::update() {
-    for (int i = 0; i < NUM_FINGERS; ++i) {
-        finger[i].update();
-    }
-}
-
-/* Reset the position and other variables in each finger */
-void Hand::reset() {
   for (int i = 0; i < NUM_FINGERS; i++) {
+    digitalWrite(27, HIGH);
+    
     finger[i].close();
 
     delay(3000);
 
+    digitalWrite(27, LOW);
     finger[i].stop();
 
     printPos();
@@ -139,11 +131,13 @@ void Hand::reset() {
 
     finger[i].setTarget(graspToTarget(finger[i].current_grasp, i));
 
+    digitalWrite(27, HIGH);
     for (int j = 0; j < 30; j++) {
       finger[i].update();
       delay(50);
     }
 
+    digitalWrite(27, LOW);
     finger[i].stop();
 
     printPos();
@@ -151,6 +145,35 @@ void Hand::reset() {
     finger[i].current_grasp = NIL;
     finger[i].setTarget(graspToTarget(finger[i].current_grasp, i));
   }
+}
+
+/* Update the control loop for each finger */
+void Hand::update() {
+    bool tempHandFinalPosition = true;
+
+    for (int i = 0; i < NUM_FINGERS; ++i) {
+//        Serial.printf("Finger: %d ", i);
+        finger[i].update();
+
+        if ((finger[i].getPos() != gripTarget[finger[i].getCurrentGrasp()][i]) && tempHandFinalPosition)
+          tempHandFinalPosition = false;
+    }
+
+    inFinalPosition = tempHandFinalPosition;
+}
+
+/* Reset the position and other variables in each finger */
+void Hand::reset() {
+    for (int i = 0; i < NUM_FINGERS; ++i) {
+        finger[i].reset();
+    }
+}
+
+void Hand::printPos() {
+  for (int i = 0; i < NUM_FINGERS; ++i) {
+    Serial.printf("%d, ", finger[i].getPos());
+  }
+  Serial.println();
 }
 
 /* Converts a grasp to the finger targets*/
@@ -190,4 +213,8 @@ void Hand::Encoder4() {
 /* Handles encoder interrupts for finger 5 */
 void Hand::Encoder5() {
   Hand::finger[5].position -= 1 - ((digitalReadFast(encoderAPins[5]) ^ digitalReadFast(encoderBPins[5])) << 1);
+}
+
+bool Hand::checkFinalPosition() {
+  return inFinalPosition;
 }

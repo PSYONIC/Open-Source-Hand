@@ -41,6 +41,8 @@ void EMGController::setup() {
 
     currentVelocity = 0;
 
+    stimState = false;
+
 }
 
 /* Initialize the filter used in each channel to prevent an initial spike */
@@ -171,7 +173,7 @@ uint16_t EMGController::collect(float32_t* data, float32_t* sum, uint32_t durati
 //FILTER SPIKE
                         
                     if (currentWindow.mav > 10000) {
-                        passes = true; //set to true to ignore cheap fix
+                        passes = false; //set to true to ignore cheap fix
                     } else {
                         data[(sampleCount * NUMFEATS) + (i * 4)] = currentWindow.mav;
                         data[(sampleCount * NUMFEATS) + (i * 4) + 1] = currentWindow.ssc;
@@ -364,6 +366,7 @@ void EMGController::update() {
         currentVelocity = velocity;
     }
 }  
+
 
 /* Returns the current classified grasp */
 classes EMGController::getClass() {

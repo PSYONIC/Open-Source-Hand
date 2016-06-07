@@ -22,10 +22,12 @@ public:
     void close();
         
     void update();
-
-    void printPos();
     
     void reset();
+
+    void printPos();
+
+    bool checkFinalPosition();
 
     static Finger finger[NUM_FINGERS];
 
@@ -37,10 +39,9 @@ public:
     static void Encoder5();
     
 private:
-
-    Adafruit_PWMServoDriver pwmDriver;
-    
     int graspToTarget(classes grasp, int fingerNum);
+
+    bool inFinalPosition;
 };
 
 #endif
